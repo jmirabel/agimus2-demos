@@ -9,6 +9,7 @@ from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import Command, FindExecutable
 from launch_ros.parameter_descriptions import ParameterValue
 
+
 from agimus_demos_common.launch_utils import (
     generate_default_franka_args,
     generate_include_launch,
@@ -54,6 +55,12 @@ def launch_setup(
         parameters=[get_use_sim_time(), agimus_controller_yaml, extra_params],
         output="screen",
         remappings=[("robot_description", "robot_description_with_collision")],
+    )
+    happypose_to_tf_node = Node(
+        package="agimus_demos_common",
+        executable="happypose_to_tf_node",
+        parameters=[get_use_sim_time()],
+        output="screen",
     )
 
     environment_description = ParameterValue(
@@ -117,13 +124,14 @@ def launch_setup(
         franka_robot_launch,
         wait_for_non_zero_joints_node,
         environment_publisher_node,
-        # tf_node,
+        tf_node,
         tf_node_support_link,
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=wait_for_non_zero_joints_node,
                 on_exit=[
                     agimus_controller_node,
+                    happypose_to_tf_node,
                     pick_and_place_node,
                 ],
             )
