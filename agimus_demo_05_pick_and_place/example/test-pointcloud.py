@@ -94,6 +94,10 @@ hpp_client.start_obj_pose = list(wMo)
 hpp_client.goal_obj_pose = goal_obj_pose
 
 grasps = graspit_script_db.load_from_csv(f"datas/graspit_obj{obj_id}.csv")
+grasps = grasps[:10]
+grasp_shift = graspit_script_db.shift_grasps(hpp_client.robot, "panda/panda_gripper", "panda/fer_hand")
+for g in grasps:
+    g.se3 = g.se3 * grasp_shift
 # gui = v.client.gui
 # if gui.nodeExists("part_grasps"):
 #     gui.deleteNode("part_grasps", True)
@@ -118,6 +122,9 @@ for i, grasp in enumerate(grasps):
     )
 # gui.refresh()
 hpp_client.handles = graspit_handles
+
+hpp_client._build_bin_picking(True, False, False)
+graph = hpp_client.binPicking.graph
 
 q0 = hpp_client.robot.getCurrentConfig()
 q0[:len(robot_init_config)] = robot_init_config

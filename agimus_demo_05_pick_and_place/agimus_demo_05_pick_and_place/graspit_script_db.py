@@ -19,7 +19,12 @@ class GraspDefinition:
 
     @property
     def se3(self):
-        return pinocchio.SE3(self.translation, self.rotation.matrix())
+        return pinocchio.SE3(self.rotation, self.translation)
+    
+    @se3.setter
+    def se3(self, jMg: pinocchio.SE3):
+        self.translation = jMg.translation
+        self.rotation = eigenpy.Quaternion(jMg.rotation)
 
 
 def load_from_csv(filename: str) -> T.List[GraspDefinition]:
@@ -48,3 +53,16 @@ def load_from_csv(filename: str) -> T.List[GraspDefinition]:
                 )
             )
     return grasps
+
+def shift_grasps(robot, gripper, graspit_link) -> pinocchio.SE3:
+    joint, jMg = robot.getGripperPositionInJoint(gripper)
+    jMg = pinocchio.XYZQUATToSE3(jMg)
+    wMl = pinocchio.XYZQUATToSE3(robot.getLinkPosition(graspit_link))
+    wMl = wMl * pinocchio.SE3(np.eye(3), np.array([0,0,0.01]))
+    wMj = pinocchio.XYZQUATToSE3(robot.getJointPosition(joint))
+    
+    # handle position using graspit link: oMH
+    # handle position using hpp link: oMh
+    # jMo = jMg * hMo = jMl * HMo
+    # oMh = oMH * lMj * jMg
+    return wMl.inverse() * wMj * jMg
