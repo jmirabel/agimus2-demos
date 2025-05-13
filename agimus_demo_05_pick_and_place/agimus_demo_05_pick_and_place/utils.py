@@ -1,5 +1,11 @@
 import numpy as np
 import xml.etree.ElementTree as ET
+import typing as T
+import pinocchio as pin
+from geometry_msgs.msg import Pose
+import numpy.typing as npt
+
+XYZQuatType: T.TypeAlias = tuple[float, float, float, float, float, float, float]
 
 
 def concatenatePaths(paths, c_robot=None):
@@ -53,12 +59,17 @@ def path_move_object(path):
 
 
 class BaseObject(object):
-    rootJointType = "freeflyer"
-
-    def __init__(self, urdf_path: str, srdf_path: str, name: str):
+    def __init__(
+        self,
+        urdf_path: str,
+        srdf_path: str,
+        name: str,
+        rootJointType: str = "freeflyer",
+    ):
         self.urdfFilename = urdf_path
         self.srdfFilename = srdf_path
         self.name = name
+        self.rootJointType = rootJointType
 
 
 def get_obj_goal_handles(prefix: str, srdf_path: str) -> (list[str], list[str]):
@@ -69,3 +80,55 @@ def get_obj_goal_handles(prefix: str, srdf_path: str) -> (list[str], list[str]):
     goal_handles = [prefix + handle for handle in all_handles if "goal" in handle]
     object_handles = [prefix + handle for handle in all_handles if "goal" not in handle]
     return object_handles, goal_handles
+
+
+def normalize_quaternion(pose: XYZQuatType) -> XYZQuatType:
+    pose[3:] = pose[3:] / np.linalg.norm(pose[3:])
+    return pose
+
+
+def posemsg2mat(pose: Pose) -> npt.NDArray:
+    """Convert a ROS2 Pose message to a 4x4 numpy array."""
+    return pin.XYZQUATToSE3(
+        np.array(
+            [
+                pose.position.x,
+                pose.position.y,
+                pose.position.z,
+                pose.orientation.x,
+                pose.orientation.y,
+                pose.orientation.z,
+                pose.orientation.w,
+            ]
+        )
+    ).homogeneous
+
+
+def graspnet_to_handle(world_to_cam: pin.SE3, cam_to_grasp: pin.SE3) -> list[float]:
+    # convert graspnet frame to franka hand frame
+    grasp_to_ee = pin.SE3(pin.rpy.rpyToMatrix(0, 0, -np.pi / 2), np.zeros(3))
+    world_to_ee = world_to_cam * cam_to_grasp * grasp_to_ee
+    # from franka hand to grasp location, and align x with axis going through the fingers
+    ee_to_grasp = pin.SE3(
+        pin.rpy.rpyToMatrix(0, -np.pi / 2, 0), np.array([0, 0, 0.103])
+    )
+    handle_in_world = world_to_ee * ee_to_grasp
+    return pin.SE3ToXYZQUAT(handle_in_world).tolist()
+
+
+def multiply_poses(pose1: XYZQuatType, pose2: XYZQuatType) -> XYZQuatType:
+    p1 = pin.XYZQUATToSE3(pose1)
+    p2 = pin.XYZQUATToSE3(pose2)
+    return normalize_quaternion(pin.SE3ToXYZQUAT(p1 * p2).tolist())
+
+
+def inverse_pose(pose: XYZQuatType) -> XYZQuatType:
+    p = pin.XYZQUATToSE3(pose)
+    return normalize_quaternion(pin.SE3ToXYZQUAT(p.inverse()).tolist())
+
+
+def config_dist(q1: XYZQuatType, q2: XYZQuatType) -> float:
+    """Computes distance between two configurations.
+    Initial implementation is just Euclidean distance between the two
+    """
+    return np.linalg.norm(np.array(q1) - np.array(q2))
